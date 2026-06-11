@@ -1,5 +1,7 @@
 const $ = (id) => document.getElementById(id);
 
+const STORAGE_KEY = "rtr.dashboard.v2";
+const REFRESH_MS = 500;
 const CHART_COLORS = [
   "#67d7a5",
   "#7aa8ff",
@@ -7,12 +9,85 @@ const CHART_COLORS = [
   "#f06d6d",
   "#63d6e8",
   "#d69bf7",
+  "#9ee493",
+  "#ff9f7a",
+  "#b9a7ff",
+  "#7be0c3",
+];
+
+const PANEL_TYPES = {
+  system: { label: "System", minW: 520, minH: 160 },
+  chart: { label: "Debug Curves", minW: 460, minH: 330 },
+  image: { label: "Debug Image", minW: 360, minH: 360 },
+  params: { label: "Parameters", minW: 620, minH: 320 },
+  values: { label: "Debug Values", minW: 420, minH: 300 },
+  logs: { label: "Logs", minW: 420, minH: 260 },
+};
+
+const SYSTEM_FIELDS = [
+  ["runtime", "Runtime"],
+  ["task", "Task"],
+  ["loop_hz", "Loop Hz"],
+  ["update_ms", "Update ms"],
+  ["frame", "Frame"],
+  ["webui", "WebUI"],
 ];
 
 const state = {
-  params: new Map(),
-  editing: null,
+  panels: [],
+  params: [],
+  status: {},
+  logs: [],
+  debug: { images: [], values: [], history: {} },
+  editingKey: null,
+  dragging: null,
+  resizing: null,
+  initialized: false,
 };
+
+function defaultPanels() {
+  return [
+    panel("system", 16, 16, 1160, 150),
+    panel("chart", 16, 184, 690, 420, {
+      selectedKeys: ["spr.command.yaw_deg", "spr.command.pitch_deg"],
+    }),
+    panel("image", 724, 184, 452, 420, { imageKey: "spr.fake.overlay" }),
+    panel("params", 16, 622, 1160, 380),
+    panel("values", 16, 1020, 560, 330),
+    panel("logs", 594, 1020, 582, 330),
+  ];
+}
+
+function panel(type, x, y, w, h, config = {}) {
+  return {
+    id: `${type}-${Date.now()}-${Math.random().toString(16).slice(2)}`,
+    type,
+    x,
+    y,
+    w,
+    h,
+    configOpen: false,
+    config,
+  };
+}
+
+function loadPanels() {
+  try {
+    const parsed = JSON.parse(localStorage.getItem(STORAGE_KEY) || "null");
+    if (Array.isArray(parsed?.panels) && parsed.panels.length) {
+      state.panels = parsed.panels.filter((p) => PANEL_TYPES[p.type]);
+    }
+  } catch (error) {
+    console.warn(error);
+  }
+  if (!state.panels.length) {
+    state.panels = defaultPanels();
+  }
+}
+
+function savePanels() {
+  localStorage.setItem(STORAGE_KEY, JSON.stringify({ panels: state.panels }));
+}
 
 async function api(path, options = {}) {
   const response = await fetch(path, options);
@@ -33,16 +108,11 @@ function formatValue(value) {
     if (abs >= 1000) return value.toFixed(0);
     if (abs >= 100) return value.toFixed(1);
     if (abs >= 10) return value.toFixed(2);
-    return value.toFixed(3);
+    if (abs >= 1) return value.toFixed(3);
+    return value.toPrecision(4);
   }
   if (typeof value === "boolean") return value ? "true" : "false";
   return String(value ?? "--");
-}
-
-function formatEntryValue(entry) {
-  if (!entry) return "--";
-  if (entry.type === "int") return String(entry.value ?? "--");
-  return formatValue(entry.value);
 }
 
 function setText(id, value) {
@@ -50,106 +120,451 @@ function setText(id, value) {
   if (element) element.textContent = value;
 }
 
-function renderSystem(status) {
-  const runtimeStatus = status.runtime_status ?? "--";
-  setText("statusBadge", runtimeStatus);
-  setText("runtimeStatus", runtimeStatus);
-  setText("taskState", status.task_name ?? "--");
-  setText("loopHz", formatValue(status.loop_hz));
-  setText("updateMs", formatValue(status.update_ms));
-  setText("frameIndex", String(status.frame_index ?? "--"));
-  setText("webuiState", status.webui ? "On" : "Off");
+function colorForKey(key, index) {
+  let hash = 0;
+  for (let i = 0; i < key.length; i += 1) {
+    hash = (hash * 31 + key.charCodeAt(i)) >>> 0;
+  }
+  return CHART_COLORS[(hash + index) % CHART_COLORS.length];
 }
 
-function renderParams(params) {
-  const body = $("paramsBody");
-  const active = document.activeElement;
-  const activeKey = active?.dataset?.key;
-  state.params = new Map(params.map((p) => [p.key, p]));
+function numericHistoryKeys() {
+  return Object.keys(state.debug.history ?? {})
+    .filter((key) => Array.isArray(state.debug.history[key]) &&
+      state.debug.history[key].length >= 2)
+    .sort();
+}
 
-  body.innerHTML = "";
-  for (const param of params) {
-    const tr = document.createElement("tr");
+function defaultChartKeys() {
+  const keys = numericHistoryKeys();
+  const preferred = [
+    ["spr.command.yaw_deg", "spr.command.pitch_deg"],
+    ["command.yaw", "command.pitch"],
+    ["spr.plan.yaw", "spr.plan.pitch"],
+  ];
+  for (const group of preferred) {
+    const picked = group.filter((key) => keys.includes(key));
+    if (picked.length) return picked;
+  }
+  return keys.slice(0, 6);
+}
 
-    const key = document.createElement("td");
-    key.className = "key";
-    key.textContent = param.key;
+function seriesForPanel(panelConfig) {
+  const configured = (panelConfig.selectedKeys ?? []).filter(
+    (key) => Array.isArray(state.debug.history?.[key]) &&
+      state.debug.history[key].length >= 2,
+  );
+  const keys = configured.length ? configured : defaultChartKeys();
+  return keys.map((key, index) => ({
+    key,
+    color: colorForKey(key, index),
+    points: state.debug.history[key] ?? [],
+  }));
+}
 
-    const value = document.createElement("td");
-    const input = document.createElement("input");
-    input.type = "text";
-    input.dataset.key = param.key;
-    input.value = formatValue(param.value);
-    input.disabled = !param.mutable;
-    input.addEventListener("focus", () => {
-      state.editing = param.key;
-    });
-    input.addEventListener("blur", () => {
-      if (state.editing === param.key) state.editing = null;
-    });
-    input.addEventListener("keydown", (event) => {
-      if (event.key === "Enter") setParam(param.key, input.value);
-    });
-    value.appendChild(input);
+function addPanel(type) {
+  const count = state.panels.length;
+  const def = PANEL_TYPES[type];
+  const created = panel(
+    type,
+    24 + (count % 4) * 34,
+    80 + (count % 6) * 38,
+    Math.max(def.minW, type === "system" || type === "params" ? 760 : def.minW),
+    def.minH + (type === "chart" ? 90 : 30),
+  );
+  state.panels.push(created);
+  savePanels();
+  renderPanelShells();
+}
 
-    const type = document.createElement("td");
-    type.textContent = param.type;
+function duplicatePanel(source) {
+  state.panels.push({
+    ...source,
+    id: `${source.type}-${Date.now()}-${Math.random().toString(16).slice(2)}`,
+    x: source.x + 32,
+    y: source.y + 32,
+    config: { ...source.config },
+  });
+  savePanels();
+  renderPanelShells();
+}
 
-    const action = document.createElement("td");
-    const button = document.createElement("button");
-    button.textContent = "Set";
-    button.disabled = !param.mutable;
-    button.addEventListener("click", () => setParam(param.key, input.value));
-    action.appendChild(button);
+function removePanel(id) {
+  state.panels = state.panels.filter((panelItem) => panelItem.id !== id);
+  savePanels();
+  renderPanelShells();
+}
 
-    tr.append(key, value, type, action);
-    body.appendChild(tr);
+function updateDashboardHeight() {
+  const bottom = state.panels.reduce((max, item) => Math.max(max, item.y + item.h), 0);
+  $("dashboard").style.minHeight = `${Math.max(720, bottom + 32)}px`;
+}
+
+function renderPanelShells() {
+  const host = $("dashboard");
+  host.innerHTML = "";
+  updateDashboardHeight();
+
+  for (const item of state.panels) {
+    const meta = PANEL_TYPES[item.type];
+    const section = document.createElement("section");
+    section.className = `panel dashboard-panel ${item.type}-panel`;
+    section.dataset.panelId = item.id;
+    section.style.left = `${item.x}px`;
+    section.style.top = `${item.y}px`;
+    section.style.width = `${item.w}px`;
+    section.style.height = `${item.h}px`;
+
+    const heading = document.createElement("div");
+    heading.className = "panel-heading drag-handle";
+    heading.addEventListener("pointerdown", (event) => startDrag(event, item.id));
+    heading.addEventListener("mousedown", (event) => startDrag(event, item.id));
+
+    const title = document.createElement("h2");
+    title.textContent = meta.label;
+    heading.appendChild(title);
+
+    const actions = document.createElement("div");
+    actions.className = "panel-actions";
+    actions.append(
+      panelButton("Cfg", () => {
+        item.configOpen = !item.configOpen;
+        savePanels();
+        renderPanelShells();
+      }),
+      panelButton("Copy", () => duplicatePanel(item)),
+      panelButton("Close", () => removePanel(item.id), "danger"),
+    );
+    heading.appendChild(actions);
+
+    const config = document.createElement("div");
+    config.className = `panel-config ${item.configOpen ? "open" : ""}`;
+    config.dataset.configFor = item.id;
+
+    const content = document.createElement("div");
+    content.className = "panel-content";
+    content.dataset.contentFor = item.id;
+
+    const resizer = document.createElement("div");
+    resizer.className = "panel-resizer";
+    resizer.addEventListener("pointerdown", (event) => startResize(event, item.id));
+    resizer.addEventListener("mousedown", (event) => startResize(event, item.id));
+
+    section.append(heading, config, content, resizer);
+    host.appendChild(section);
   }
 
-  if (activeKey) {
-    const next = document.querySelector(`input[data-key="${CSS.escape(activeKey)}"]`);
-    if (next && state.editing === activeKey) next.focus();
+  updateAllPanels();
+}
+
+function panelButton(label, onClick, tone = "") {
+  const button = document.createElement("button");
+  button.type = "button";
+  button.className = `small-button ${tone}`;
+  button.textContent = label;
+  button.addEventListener("click", (event) => {
+    event.stopPropagation();
+    onClick();
+  });
+  return button;
+}
+
+function startDrag(event, id) {
+  if (event.type === "mousedown" && state.dragging) return;
+  if (event.target.closest("button, input, select, label")) return;
+  const item = state.panels.find((panelItem) => panelItem.id === id);
+  if (!item) return;
+  const rect = event.currentTarget.closest(".dashboard-panel").getBoundingClientRect();
+  state.dragging = {
+    id,
+    dx: event.clientX - rect.left,
+    dy: event.clientY - rect.top,
+  };
+  event.preventDefault();
+  if (event.currentTarget.setPointerCapture && event.pointerId !== undefined) {
+    event.currentTarget.setPointerCapture(event.pointerId);
   }
 }
 
-async function setParam(key, value) {
-  await api("/api/params/set", {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ key, value }),
-  }).catch((error) => console.error(error));
+function startResize(event, id) {
+  if (event.type === "mousedown" && state.resizing) return;
+  event.stopPropagation();
+  const item = state.panels.find((panelItem) => panelItem.id === id);
+  if (!item) return;
+  state.resizing = {
+    id,
+    startX: event.clientX,
+    startY: event.clientY,
+    w: item.w,
+    h: item.h,
+  };
+  event.preventDefault();
+  if (event.currentTarget.setPointerCapture && event.pointerId !== undefined) {
+    event.currentTarget.setPointerCapture(event.pointerId);
+  }
 }
 
-function renderDebugValues(values = []) {
-  const grid = $("debugValuesGrid");
-  grid.innerHTML = "";
-  const taskValues = [...values].sort((a, b) => a.key.localeCompare(b.key));
+function applyPointerMove(event) {
+  const dashboardRect = $("dashboard").getBoundingClientRect();
+  if (state.dragging) {
+    const item = state.panels.find((panelItem) => panelItem.id === state.dragging.id);
+    if (!item) return;
+    item.x = Math.max(0, event.clientX - dashboardRect.left - state.dragging.dx);
+    item.y = Math.max(0, event.clientY - dashboardRect.top - state.dragging.dy);
+    const element = document.querySelector(`[data-panel-id="${CSS.escape(item.id)}"]`);
+    if (element) {
+      element.style.left = `${item.x}px`;
+      element.style.top = `${item.y}px`;
+    }
+    updateDashboardHeight();
+  }
+  if (state.resizing) {
+    const item = state.panels.find((panelItem) => panelItem.id === state.resizing.id);
+    if (!item) return;
+    const meta = PANEL_TYPES[item.type];
+    item.w = Math.max(meta.minW, state.resizing.w + event.clientX - state.resizing.startX);
+    item.h = Math.max(meta.minH, state.resizing.h + event.clientY - state.resizing.startY);
+    const element = document.querySelector(`[data-panel-id="${CSS.escape(item.id)}"]`);
+    if (element) {
+      element.style.width = `${item.w}px`;
+      element.style.height = `${item.h}px`;
+    }
+    updateDashboardHeight();
+    updatePanelContent(item);
+  }
+}
 
-  if (!taskValues.length) {
-    const empty = document.createElement("div");
-    empty.className = "empty-debug";
-    empty.textContent = "No debug values";
-    grid.appendChild(empty);
+function finishPointerChange() {
+  if (state.dragging || state.resizing) {
+    state.dragging = null;
+    state.resizing = null;
+    savePanels();
+  }
+}
+
+function updateAllPanels() {
+  setText("statusBadge", state.status.runtime_status ?? "Disconnected");
+  for (const item of state.panels) {
+    updatePanelConfig(item);
+    updatePanelContent(item);
+  }
+}
+
+function updatePanelConfig(item) {
+  const box = document.querySelector(`[data-config-for="${CSS.escape(item.id)}"]`);
+  if (!box || !item.configOpen) {
+    if (box) box.innerHTML = "";
     return;
   }
-
-  for (const entry of taskValues) {
-    const item = document.createElement("div");
-    item.className = `debug-value-item ${entry.type}`;
-    const key = document.createElement("span");
-    key.textContent = entry.key;
-    const value = document.createElement("strong");
-    value.textContent = formatEntryValue(entry);
-    item.append(key, value);
-    grid.appendChild(item);
+  if (item.type === "system") {
+    renderSystemConfig(item, box);
+  } else if (item.type === "chart") {
+    renderChartConfig(item, box);
+  } else if (item.type === "image") {
+    renderImageConfig(item, box);
+  } else if (item.type === "params" || item.type === "values") {
+    renderFilterConfig(item, box);
+  } else if (item.type === "logs") {
+    renderLogsConfig(item, box);
   }
+}
+
+function updatePanelContent(item) {
+  const content = document.querySelector(`[data-content-for="${CSS.escape(item.id)}"]`);
+  if (!content) return;
+  if (item.type === "system") renderSystemPanel(item, content);
+  if (item.type === "chart") renderChartPanel(item, content);
+  if (item.type === "image") renderImagePanel(item, content);
+  if (item.type === "params") renderParamsPanel(item, content);
+  if (item.type === "values") renderValuesPanel(item, content);
+  if (item.type === "logs") renderLogsPanel(item, content);
+}
+
+function renderSystemPanel(item, content) {
+  const status = state.status;
+  const selected = new Set(item.config.fields ?? SYSTEM_FIELDS.map((field) => field[0]));
+  content.innerHTML = "";
+  const grid = document.createElement("div");
+  grid.className = "system-grid";
+  const values = {
+    runtime: status.runtime_status ?? "--",
+    task: status.task_name ?? "--",
+    loop_hz: formatValue(status.loop_hz),
+    update_ms: formatValue(status.update_ms),
+    frame: String(status.frame_index ?? "--"),
+    webui: status.webui ? "On" : "Off",
+  };
+  SYSTEM_FIELDS.filter(([key]) => selected.has(key)).forEach(([key, label]) => {
+    const item = document.createElement("div");
+    item.className = "system-metric";
+    const labelElement = document.createElement("span");
+    labelElement.textContent = label;
+    const strong = document.createElement("strong");
+    strong.textContent = values[key];
+    item.append(labelElement, strong);
+    grid.appendChild(item);
+  });
+  content.appendChild(grid);
+}
+
+function renderSystemConfig(item, box) {
+  const selected = new Set(item.config.fields ?? SYSTEM_FIELDS.map((field) => field[0]));
+  box.innerHTML = "";
+  const list = document.createElement("div");
+  list.className = "check-list compact";
+  for (const [key, labelText] of SYSTEM_FIELDS) {
+    const label = document.createElement("label");
+    const input = document.createElement("input");
+    input.type = "checkbox";
+    input.checked = selected.has(key);
+    input.addEventListener("change", () => {
+      const next = new Set(item.config.fields ?? SYSTEM_FIELDS.map((field) => field[0]));
+      if (input.checked) next.add(key);
+      else next.delete(key);
+      item.config.fields = [...next];
+      savePanels();
+      updatePanelContent(item);
+    });
+    const text = document.createElement("span");
+    text.textContent = labelText;
+    label.append(input, text);
+    list.appendChild(label);
+  }
+  box.appendChild(list);
+}
+
+function renderChartConfig(item, box) {
+  const selected = new Set(item.config.selectedKeys ?? []);
+  const keys = numericHistoryKeys();
+  box.innerHTML = "";
+  const list = document.createElement("div");
+  list.className = "check-list";
+  for (const key of keys) {
+    const label = document.createElement("label");
+    const input = document.createElement("input");
+    input.type = "checkbox";
+    input.checked = selected.has(key);
+    input.addEventListener("change", () => {
+      const next = new Set(item.config.selectedKeys ?? []);
+      if (input.checked) next.add(key);
+      else next.delete(key);
+      item.config.selectedKeys = [...next].sort();
+      savePanels();
+      updatePanelContent(item);
+    });
+    const text = document.createElement("span");
+    text.textContent = key;
+    label.append(input, text);
+    list.appendChild(label);
+  }
+  box.appendChild(list);
+}
+
+function renderImageConfig(item, box) {
+  box.innerHTML = "";
+  const select = document.createElement("select");
+  select.className = "config-select";
+  for (const key of state.debug.images ?? []) {
+    const option = document.createElement("option");
+    option.value = key;
+    option.textContent = key;
+    option.selected = key === item.config.imageKey;
+    select.appendChild(option);
+  }
+  select.addEventListener("change", () => {
+    item.config.imageKey = select.value;
+    savePanels();
+    updatePanelContent(item);
+  });
+  box.appendChild(select);
+}
+
+function renderFilterConfig(item, box) {
+  box.innerHTML = "";
+  const input = document.createElement("input");
+  input.type = "text";
+  input.placeholder = "filter";
+  input.value = item.config.filter ?? "";
+  input.addEventListener("input", () => {
+    item.config.filter = input.value;
+    savePanels();
+    updatePanelContent(item);
+  });
+  box.appendChild(input);
+}
+
+function renderLogsConfig(item, box) {
+  box.innerHTML = "";
+  const input = document.createElement("input");
+  input.type = "number";
+  input.min = "10";
+  input.max = "300";
+  input.step = "10";
+  input.value = item.config.limit ?? 80;
+  input.addEventListener("change", () => {
+    item.config.limit = Math.max(10, Number.parseInt(input.value || "80", 10));
+    savePanels();
+    updatePanelContent(item);
+  });
+  box.appendChild(input);
+}
+
+function renderChartPanel(item, content) {
+  content.innerHTML = "";
+  const series = seriesForPanel(item.config);
+  const legend = document.createElement("div");
+  legend.className = "chart-legend";
+  for (const line of series) {
+    const values = line.points.map((point) => point[1]);
+    const min = Math.min(...values);
+    const max = Math.max(...values);
+    const latest = values[values.length - 1];
+    const pill = document.createElement("div");
+    pill.className = "legend-item";
+    pill.innerHTML =
+      `<span class="legend-dot" style="background:${line.color}"></span>` +
+      `<span class="legend-key"></span>` +
+      `<span class="legend-value">${formatValue(latest)}</span>` +
+      `<span class="legend-range">${formatValue(min)} / ${formatValue(max)}</span>`;
+    pill.querySelector(".legend-key").textContent = line.key;
+    legend.appendChild(pill);
+  }
+
+  const wrap = document.createElement("div");
+  wrap.className = "chart-wrap";
+  const canvas = document.createElement("canvas");
+  const tooltip = document.createElement("div");
+  tooltip.className = "chart-tooltip";
+  wrap.append(canvas, tooltip);
+  content.append(legend, wrap);
+
+  const draw = (hoverX = null) => {
+    const hover = drawChart(canvas, series, hoverX);
+    if (!hover) {
+      tooltip.classList.remove("visible");
+      return;
+    }
+    tooltip.classList.add("visible");
+    tooltip.style.left = `${Math.min(hover.x + 12, canvas.clientWidth - 190)}px`;
+    tooltip.style.top = `${Math.max(8, hover.y - 12)}px`;
+    tooltip.innerHTML = hover.rows
+      .map((row) => `<div><b style="color:${row.color}">${row.key}</b> ${formatValue(row.value)}</div>`)
+      .join("");
+  };
+
+  canvas.addEventListener("mousemove", (event) => {
+    const rect = canvas.getBoundingClientRect();
+    draw(event.clientX - rect.left);
+  });
+  canvas.addEventListener("mouseleave", () => draw(null));
+  draw(null);
 }
 
 function setupCanvas(canvas) {
   const dpr = window.devicePixelRatio || 1;
   const rect = canvas.getBoundingClientRect();
-  const width = Math.max(320, Math.round(rect.width || canvas.clientWidth || 720));
-  const height = Math.max(220, Math.round(rect.height || canvas.clientHeight || 300));
+  const width = Math.max(260, Math.round(rect.width || canvas.clientWidth || 640));
+  const height = Math.max(220, Math.round(rect.height || canvas.clientHeight || 280));
   const pixelWidth = Math.round(width * dpr);
   const pixelHeight = Math.round(height * dpr);
   if (canvas.width !== pixelWidth || canvas.height !== pixelHeight) {
@@ -161,95 +576,31 @@ function setupCanvas(canvas) {
   return { ctx, width, height };
 }
 
-function chooseDebugSeries(history) {
-  const keys = Object.keys(history ?? {})
-    .filter((key) => Array.isArray(history[key]) && history[key].length >= 2)
-    .sort();
-
-  const preferredGroups = [
-    ["spr.command.yaw_deg", "spr.command.pitch_deg"],
-    ["command.yaw", "command.pitch"],
-    ["spr.plan.yaw", "spr.plan.pitch"],
-  ];
-
-  const selected = [];
-  for (const group of preferredGroups) {
-    for (const key of group) {
-      if (keys.includes(key) && !selected.includes(key)) selected.push(key);
-    }
-    if (selected.length) {
-      return selected.map((key, index) => ({
-        key,
-        color: CHART_COLORS[index % CHART_COLORS.length],
-        points: history[key],
-      }));
-    }
-  }
-
-  for (const key of keys) {
-    if (selected.length >= 6) break;
-    if (!selected.includes(key)) selected.push(key);
-  }
-
-  return selected.map((key, index) => ({
-    key,
-    color: CHART_COLORS[index % CHART_COLORS.length],
-    points: history[key],
-  }));
-}
-
-function renderLegend(series) {
-  const legend = $("chartLegend");
-  legend.innerHTML = "";
-  for (const item of series) {
-    const latest = item.points[item.points.length - 1]?.[1];
-    const pill = document.createElement("div");
-    pill.className = "legend-item";
-    const dot = document.createElement("span");
-    dot.className = "legend-dot";
-    dot.style.background = item.color;
-    const key = document.createElement("span");
-    key.className = "legend-key";
-    key.textContent = item.key;
-    const value = document.createElement("span");
-    value.className = "legend-value";
-    value.textContent = formatValue(latest);
-    pill.append(dot, key, value);
-    legend.appendChild(pill);
-  }
-}
-
-function drawEmptyChart(ctx, width, height, message) {
+function drawChart(canvas, series, hoverX) {
+  const { ctx, width, height } = setupCanvas(canvas);
+  ctx.clearRect(0, 0, width, height);
   ctx.fillStyle = "#0b0d11";
   ctx.fillRect(0, 0, width, height);
-  ctx.fillStyle = "#76808f";
-  ctx.font = "13px ui-monospace, monospace";
-  ctx.textAlign = "center";
-  ctx.fillText(message, width / 2, height / 2);
-  ctx.textAlign = "start";
-}
-
-function drawDebugChart(history) {
-  const canvas = $("chart");
-  const { ctx, width, height } = setupCanvas(canvas);
-  const series = chooseDebugSeries(history);
-  renderLegend(series);
 
   if (!series.length) {
-    drawEmptyChart(ctx, width, height, "No debug scalar history");
-    return;
+    ctx.fillStyle = "#76808f";
+    ctx.font = "13px ui-monospace, monospace";
+    ctx.textAlign = "center";
+    ctx.fillText("No scalar history", width / 2, height / 2);
+    ctx.textAlign = "start";
+    return null;
   }
 
-  const margins = { left: 58, right: 18, top: 18, bottom: 36 };
+  const margins = { left: 60, right: 20, top: 18, bottom: 34 };
   const plotX = margins.left;
   const plotY = margins.top;
-  const plotW = width - margins.left - margins.right;
-  const plotH = height - margins.top - margins.bottom;
+  const plotW = Math.max(80, width - margins.left - margins.right);
+  const plotH = Math.max(80, height - margins.top - margins.bottom);
   const allPoints = series.flatMap((item) => item.points);
-  const minT = Math.min(...allPoints.map((p) => p[0]));
-  const maxT = Math.max(...allPoints.map((p) => p[0]));
-  let minY = Math.min(...allPoints.map((p) => p[1]));
-  let maxY = Math.max(...allPoints.map((p) => p[1]));
+  const minT = Math.min(...allPoints.map((point) => point[0]));
+  const maxT = Math.max(...allPoints.map((point) => point[0]));
+  let minY = Math.min(...allPoints.map((point) => point[1]));
+  let maxY = Math.max(...allPoints.map((point) => point[1]));
 
   if (minY === maxY) {
     minY -= 1;
@@ -260,20 +611,16 @@ function drawDebugChart(history) {
     maxY += padding;
   }
 
-  const xFor = (t) => plotX + ((t - minT) / Math.max(maxT - minT, 1)) * plotW;
-  const yFor = (v) => plotY + ((maxY - v) / (maxY - minY)) * plotH;
-
-  ctx.clearRect(0, 0, width, height);
-  ctx.fillStyle = "#0b0d11";
-  ctx.fillRect(0, 0, width, height);
+  const xFor = (time) => plotX + ((time - minT) / Math.max(maxT - minT, 1)) * plotW;
+  const yFor = (value) => plotY + ((maxY - value) / (maxY - minY)) * plotH;
+  const timeForX = (x) => minT + ((x - plotX) / plotW) * Math.max(maxT - minT, 1);
 
   ctx.save();
   ctx.strokeStyle = "#27303b";
   ctx.fillStyle = "#8c96a5";
   ctx.font = "11px ui-monospace, monospace";
   ctx.lineWidth = 1;
-
-  for (let i = 0; i <= 4; i++) {
+  for (let i = 0; i <= 4; i += 1) {
     const ratio = i / 4;
     const y = plotY + ratio * plotH;
     const value = maxY - ratio * (maxY - minY);
@@ -283,19 +630,17 @@ function drawDebugChart(history) {
     ctx.stroke();
     ctx.fillText(formatValue(value), 8, y + 4);
   }
-
-  for (let i = 0; i <= 4; i++) {
+  for (let i = 0; i <= 4; i += 1) {
     const ratio = i / 4;
     const x = plotX + ratio * plotW;
-    const t = minT + ratio * (maxT - minT);
-    const secondsAgo = (maxT - t) / 1000;
+    const time = minT + ratio * (maxT - minT);
+    const secondsAgo = (maxT - time) / 1000;
     ctx.beginPath();
     ctx.moveTo(x, plotY);
     ctx.lineTo(x, plotY + plotH);
     ctx.stroke();
     ctx.fillText(`-${secondsAgo.toFixed(1)}s`, x - 18, plotY + plotH + 22);
   }
-
   if (minY < 0 && maxY > 0) {
     const zeroY = yFor(0);
     ctx.strokeStyle = "#566172";
@@ -304,18 +649,16 @@ function drawDebugChart(history) {
     ctx.lineTo(plotX + plotW, zeroY);
     ctx.stroke();
   }
-
   ctx.strokeStyle = "#596473";
   ctx.strokeRect(plotX, plotY, plotW, plotH);
   ctx.restore();
 
   for (const item of series) {
-    const points = item.points;
     ctx.save();
     ctx.beginPath();
-    points.forEach((p, index) => {
-      const x = xFor(p[0]);
-      const y = yFor(p[1]);
+    item.points.forEach((point, index) => {
+      const x = xFor(point[0]);
+      const y = yFor(point[1]);
       if (index === 0) ctx.moveTo(x, y);
       else ctx.lineTo(x, y);
     });
@@ -327,7 +670,7 @@ function drawDebugChart(history) {
     ctx.shadowBlur = 8;
     ctx.stroke();
 
-    const last = points[points.length - 1];
+    const last = item.points[item.points.length - 1];
     ctx.shadowBlur = 0;
     ctx.fillStyle = item.color;
     ctx.beginPath();
@@ -335,12 +678,173 @@ function drawDebugChart(history) {
     ctx.fill();
     ctx.restore();
   }
+
+  if (hoverX === null || hoverX < plotX || hoverX > plotX + plotW) return null;
+  const targetTime = timeForX(hoverX);
+  const rows = [];
+  let markerY = plotY + plotH / 2;
+  ctx.save();
+  ctx.strokeStyle = "#dfe5ee";
+  ctx.setLineDash([4, 4]);
+  ctx.beginPath();
+  ctx.moveTo(hoverX, plotY);
+  ctx.lineTo(hoverX, plotY + plotH);
+  ctx.stroke();
+  ctx.setLineDash([]);
+  for (const item of series) {
+    const nearest = item.points.reduce((best, point) =>
+      Math.abs(point[0] - targetTime) < Math.abs(best[0] - targetTime) ? point : best,
+    item.points[0]);
+    const x = xFor(nearest[0]);
+    const y = yFor(nearest[1]);
+    markerY = y;
+    rows.push({ key: item.key, value: nearest[1], color: item.color });
+    ctx.fillStyle = "#0b0d11";
+    ctx.strokeStyle = item.color;
+    ctx.lineWidth = 2;
+    ctx.beginPath();
+    ctx.arc(x, y, 4, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.stroke();
+  }
+  ctx.restore();
+  return { x: hoverX, y: markerY, rows };
 }
 
-function renderLogs(logs) {
-  const box = $("logs");
-  box.innerHTML = "";
-  for (const entry of logs.slice(-80).reverse()) {
+function renderImagePanel(item, content) {
+  content.innerHTML = "";
+  const key = state.debug.images.includes(item.config.imageKey)
+    ? item.config.imageKey
+    : state.debug.images[0];
+  if (key && item.config.imageKey !== key) {
+    item.config.imageKey = key;
+    savePanels();
+  }
+  const img = document.createElement("img");
+  img.alt = key || "No debug image";
+  if (key) {
+    img.src = `/api/debug/image/${encodeURIComponent(key)}?t=${Date.now()}`;
+  }
+  content.appendChild(img);
+}
+
+function renderParamsPanel(item, content) {
+  if (state.editingKey && content.dataset.rendered === "true") return;
+  content.dataset.rendered = "true";
+  const filter = (item.config.filter ?? "").toLowerCase();
+  const params = state.params.filter((paramItem) => paramItem.key.toLowerCase().includes(filter));
+  content.innerHTML = "";
+  const wrap = document.createElement("div");
+  wrap.className = "table-wrap";
+  const table = document.createElement("table");
+  table.innerHTML =
+    "<thead><tr><th>Key</th><th>Value</th><th>Type</th><th></th></tr></thead><tbody></tbody>";
+  const body = table.querySelector("tbody");
+  for (const paramItem of params) {
+    const tr = document.createElement("tr");
+    const key = document.createElement("td");
+    key.className = "key";
+    key.textContent = paramItem.key;
+    const value = document.createElement("td");
+    const control = paramControl(paramItem);
+    value.appendChild(control.input);
+    const type = document.createElement("td");
+    type.textContent = paramItem.type;
+    const action = document.createElement("td");
+    if (control.button) action.appendChild(control.button);
+    tr.append(key, value, type, action);
+    body.appendChild(tr);
+  }
+  wrap.appendChild(table);
+  content.appendChild(wrap);
+}
+
+function paramControl(paramItem) {
+  if (paramItem.type === "bool") {
+    const select = document.createElement("select");
+    select.dataset.key = paramItem.key;
+    select.disabled = !paramItem.mutable;
+    for (const value of ["true", "false"]) {
+      const option = document.createElement("option");
+      option.value = value;
+      option.textContent = value;
+      option.selected = String(paramItem.value) === value;
+      select.appendChild(option);
+    }
+    select.addEventListener("change", () => setParam(paramItem.key, select.value));
+    return { input: select, button: null };
+  }
+
+  const input = document.createElement("input");
+  input.dataset.key = paramItem.key;
+  input.disabled = !paramItem.mutable;
+  input.value = String(paramItem.value ?? "");
+  if (paramItem.type === "double" || paramItem.type === "int") {
+    input.type = "number";
+    input.step = paramItem.type === "int" ? "1" : "any";
+    if (paramItem.min !== null && paramItem.min !== undefined) input.min = String(paramItem.min);
+    if (paramItem.max !== null && paramItem.max !== undefined) input.max = String(paramItem.max);
+    input.inputMode = paramItem.type === "int" ? "numeric" : "decimal";
+  } else {
+    input.type = "text";
+  }
+  input.addEventListener("focus", () => {
+    state.editingKey = paramItem.key;
+  });
+  input.addEventListener("blur", () => {
+    if (state.editingKey === paramItem.key) state.editingKey = null;
+  });
+  input.addEventListener("keydown", (event) => {
+    if (event.key === "Enter") setParam(paramItem.key, input.value);
+  });
+
+  const button = panelButton("Set", () => setParam(paramItem.key, input.value));
+  button.disabled = !paramItem.mutable;
+  return { input, button };
+}
+
+async function setParam(key, value) {
+  await api("/api/params/set", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ key, value: String(value) }),
+  }).catch((error) => console.error(error));
+  state.editingKey = null;
+}
+
+function renderValuesPanel(item, content) {
+  const filter = (item.config.filter ?? "").toLowerCase();
+  const values = [...(state.debug.values ?? [])]
+    .filter((entry) => entry.key.toLowerCase().includes(filter))
+    .sort((a, b) => a.key.localeCompare(b.key));
+  content.innerHTML = "";
+  const grid = document.createElement("div");
+  grid.className = "debug-values-grid";
+  if (!values.length) {
+    const empty = document.createElement("div");
+    empty.className = "empty-debug";
+    empty.textContent = "No debug values";
+    grid.appendChild(empty);
+  }
+  for (const entry of values) {
+    const div = document.createElement("div");
+    div.className = `debug-value-item ${entry.type}`;
+    const key = document.createElement("span");
+    key.textContent = entry.key;
+    const value = document.createElement("strong");
+    value.textContent = formatValue(entry.value);
+    div.append(key, value);
+    grid.appendChild(div);
+  }
+  content.appendChild(grid);
+}
+
+function renderLogsPanel(item, content) {
+  const limit = item.config.limit ?? 80;
+  content.innerHTML = "";
+  const box = document.createElement("div");
+  box.className = "logs";
+  for (const entry of state.logs.slice(-limit).reverse()) {
     const line = document.createElement("div");
     line.className = `log-line ${entry.level.toLowerCase()}`;
     const level = document.createElement("b");
@@ -350,6 +854,7 @@ function renderLogs(logs) {
     line.append(level, msg);
     box.appendChild(line);
   }
+  content.appendChild(box);
 }
 
 async function refresh() {
@@ -360,26 +865,13 @@ async function refresh() {
       api("/api/logs"),
       api("/api/debug/list"),
     ]);
-    renderSystem(status);
-    if (!state.editing) renderParams(params.params);
-    renderDebugValues(debug.values);
-    drawDebugChart(debug.history);
-    renderLogs(logs.logs);
-    const debugImageKey = debug.images.includes("spr.fake.overlay")
-      ? "spr.fake.overlay"
-      : debug.images.includes("spr.overlay")
-        ? "spr.overlay"
-        : debug.images[0];
-    if (debugImageKey) {
-      $("debugImage").alt = debugImageKey;
-      $("debugImage").src = `/api/debug/image/${encodeURIComponent(debugImageKey)}?t=${Date.now()}`;
-    } else {
-      $("debugImage").removeAttribute("src");
-      $("debugImage").alt = "No debug image";
-    }
+    state.status = status;
+    state.params = params.params ?? [];
+    state.logs = logs.logs ?? [];
+    state.debug = debug ?? { images: [], values: [], history: {} };
+    updateAllPanels();
   } catch (error) {
     setText("statusBadge", "Disconnected");
-    setText("runtimeStatus", "Disconnected");
   }
 }
 
@@ -387,5 +879,20 @@ for (const button of document.querySelectorAll("[data-command]")) {
   button.addEventListener("click", () => postCommand(button.dataset.command));
 }
 
+$("addPanel").addEventListener("click", () => addPanel($("panelType").value));
+$("resetLayout").addEventListener("click", () => {
+  state.panels = defaultPanels();
+  savePanels();
+  renderPanelShells();
+});
+
+document.addEventListener("pointermove", applyPointerMove);
+document.addEventListener("pointerup", finishPointerChange);
+document.addEventListener("mousemove", applyPointerMove);
+document.addEventListener("mouseup", finishPointerChange);
+window.addEventListener("resize", () => updateAllPanels());
+
+loadPanels();
+renderPanelShells();
 refresh();
-setInterval(refresh, 500);
+setInterval(refresh, REFRESH_MS);
