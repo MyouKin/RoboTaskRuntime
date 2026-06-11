@@ -1,0 +1,10 @@
+runtime:
+  update_rate_hz: 20
+  webui:
+    enabled: true
+    port: 8080
+
+minimal:
+  message: "hello runtime"
+  amplitude: 1.0
+

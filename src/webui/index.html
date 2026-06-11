@@ -1,0 +1,98 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>RoboTaskRuntime</title>
+    <link rel="stylesheet" href="/style.css" />
+  </head>
+  <body>
+    <header class="topbar">
+      <div>
+        <h1>RoboTaskRuntime</h1>
+        <span id="statusBadge" class="badge">Idle</span>
+      </div>
+      <nav class="controls">
+        <button data-command="run">Run</button>
+        <button data-command="pause">Pause</button>
+        <button data-command="resume">Resume</button>
+        <button data-command="stop">Stop</button>
+        <button data-command="shutdown" class="danger">Shutdown</button>
+      </nav>
+    </header>
+
+    <main class="layout">
+      <section class="panel system-panel">
+        <h2>System</h2>
+        <div class="system-grid">
+          <div class="system-metric">
+            <span>Runtime</span>
+            <strong id="runtimeStatus">--</strong>
+          </div>
+          <div class="system-metric">
+            <span>Task</span>
+            <strong id="taskState">--</strong>
+          </div>
+          <div class="system-metric">
+            <span>Loop Hz</span>
+            <strong id="loopHz">--</strong>
+          </div>
+          <div class="system-metric">
+            <span>Update ms</span>
+            <strong id="updateMs">--</strong>
+          </div>
+          <div class="system-metric">
+            <span>Frame</span>
+            <strong id="frameIndex">--</strong>
+          </div>
+          <div class="system-metric">
+            <span>WebUI</span>
+            <strong id="webuiState">--</strong>
+          </div>
+        </div>
+      </section>
+
+      <section class="panel chart-panel">
+        <div class="panel-heading">
+          <h2>Debug Curves</h2>
+          <div id="chartLegend" class="chart-legend"></div>
+        </div>
+        <canvas id="chart" width="720" height="220"></canvas>
+      </section>
+
+      <section class="panel image-panel">
+        <h2>Debug Image</h2>
+        <img id="debugImage" alt="sim.overlay" />
+      </section>
+
+      <section class="panel params-panel">
+        <h2>Parameters</h2>
+        <div class="table-wrap">
+          <table>
+            <thead>
+              <tr>
+                <th>Key</th>
+                <th>Value</th>
+                <th>Type</th>
+                <th></th>
+              </tr>
+            </thead>
+            <tbody id="paramsBody"></tbody>
+          </table>
+        </div>
+      </section>
+
+      <section class="panel debug-values-panel">
+        <h2>Debug Values</h2>
+        <div id="debugValuesGrid" class="debug-values-grid"></div>
+      </section>
+
+      <section class="panel logs-panel">
+        <h2>Logs</h2>
+        <div id="logs" class="logs"></div>
+      </section>
+    </main>
+
+    <script src="/app.js"></script>
+  </body>
+</html>

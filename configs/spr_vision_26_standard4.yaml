@@ -1,0 +1,11 @@
+runtime:
+  update_rate_hz: 120
+  webui:
+    enabled: true
+    port: 8080
+
+spr:
+  config_path: "src/task/spr_vision_26/vendor/configs/spr_standard4.yaml"
+  debug:
+    enable_overlay: true
+

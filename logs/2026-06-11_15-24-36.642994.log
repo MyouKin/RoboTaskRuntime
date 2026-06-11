@@ -1,0 +1,4 @@
+[2026-06-11 23:24:36.643] [info] [ParamTuner] Loaded 3 filter param sets
+[2026-06-11 23:24:36.644] [info]   [slow] v1=10.0 v2=0.5 R_yaw=4.0e-03 R_pitch=4.0e-03 R_dist=9.0e-02 thresh=2.0
+[2026-06-11 23:24:36.644] [info]   [normal] v1=100.0 v2=400.0 R_yaw=4.0e-03 R_pitch=4.0e-03 R_dist=9.0e-02 thresh=8.0
+[2026-06-11 23:24:36.644] [info]   [fast] v1=500.0 v2=1000.0 R_yaw=2.0e-03 R_pitch=2.0e-03 R_dist=5.0e-02 thresh=999.0
