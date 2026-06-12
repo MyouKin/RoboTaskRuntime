@@ -129,7 +129,7 @@ bool SprVisionFakeTestTask::onInit(rtr::Rtr& rtr) {
 #ifdef RTR_SPR_VISION_26_DIR
       std::string(RTR_SPR_VISION_26_DIR) + "/vendor/configs/spr_fake_demo.yaml";
 #else
-      "src/task/spr_vision_26/vendor/configs/spr_fake_demo.yaml";
+      "src/tasks/spr_vision_26/vendor/configs/spr_fake_demo.yaml";
 #endif
 
   rtr.param().declareString("spr.config_path", default_config,

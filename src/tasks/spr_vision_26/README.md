@@ -5,10 +5,10 @@
 ## 分层
 
 - `include/tasks/spr_vision_26/`：Runtime 看到的 task 头文件，只暴露 `SprVisionTask` 和 `SprVisionFakeTestTask`。
-- `src/task/spr_vision_26/spr_vision_task.cpp`：真实 Linux 机器人任务适配层，保留原 `standard_mpc` 主流程和规划线程结构。
-- `src/task/spr_vision_26/spr_vision_fake_test_task.cpp`：macOS 友好的 fake 数据任务，复用原 Solver、Tracker、Aimer，验证 `solve -> track -> aim -> command`。
-- `src/task/spr_vision_26/spr_vision_image_bridge.*`：把 OpenCV 图像转换为 Runtime debug 图像。
-- `src/task/spr_vision_26/vendor/`：从原项目搬来的主流程依赖代码。这里优先保持原样，只做编译边界、文件结构和可读性所需的小改动。
+- `src/tasks/spr_vision_26/spr_vision_task.cpp`：真实 Linux 机器人任务适配层，保留原 `standard_mpc` 主流程和规划线程结构。
+- `src/tasks/spr_vision_26/spr_vision_fake_test_task.cpp`：macOS 友好的 fake 数据任务，复用原 Solver、Tracker、Aimer，验证 `solve -> track -> aim -> command`。
+- `src/tasks/spr_vision_26/spr_vision_image_bridge.*`：把 OpenCV 图像转换为 Runtime debug 图像。
+- `src/tasks/spr_vision_26/vendor/`：从原项目搬来的主流程依赖代码。这里优先保持原样，只做编译边界、文件结构和可读性所需的小改动。
 - `configs/spr_vision_26_fake_test.yaml`：fake 流程的 Runtime 配置。
 - `configs/spr_vision_26_standard4.yaml`：真实任务的 Runtime 配置，指向 `vendor/configs/spr_standard4.yaml`。
 

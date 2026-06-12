@@ -5,7 +5,7 @@ runtime:
     port: 8080
 
 spr:
-  config_path: "src/task/spr_vision_26/vendor/configs/spr_fake_demo.yaml"
+  config_path: "src/tasks/spr_vision_26/vendor/configs/spr_fake_demo.yaml"
   fake:
     bullet_speed: 27.0
     enable_overlay: true

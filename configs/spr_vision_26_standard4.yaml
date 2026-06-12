@@ -5,7 +5,7 @@ runtime:
     port: 8080
 
 spr:
-  config_path: "src/task/spr_vision_26/vendor/configs/spr_standard4.yaml"
+  config_path: "src/tasks/spr_vision_26/vendor/configs/spr_standard4.yaml"
   debug:
     enable_overlay: true
 

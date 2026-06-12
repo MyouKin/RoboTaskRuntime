@@ -19,7 +19,7 @@ find_package(fmt QUIET)
 find_package(Eigen3 QUIET)
 
 set(RTR_HAS_SPR_VISION_26_FAKE_TEST OFF)
-set(RTR_SPR_VISION_26_DIR "${CMAKE_CURRENT_SOURCE_DIR}/src/task/spr_vision_26")
+set(RTR_SPR_VISION_26_DIR "${CMAKE_CURRENT_SOURCE_DIR}/src/tasks/spr_vision_26")
 
 if(RTR_USE_OPENCV)
   find_package(OpenCV REQUIRED COMPONENTS core imgproc)
@@ -42,24 +42,24 @@ set(RTR_SOURCES
   src/core/webui_server.cpp
   src/io/sim_io.cpp
   src/tasks/minimal_task/minimal_task.cpp
-  src/task/spr_vision_26/spr_vision_task.cpp
+  src/tasks/spr_vision_26/spr_vision_task.cpp
 )
 
 if(RTR_HAS_SPR_VISION_26_FAKE_TEST)
   list(APPEND RTR_SOURCES
-    src/task/spr_vision_26/spr_vision_image_bridge.cpp
-    src/task/spr_vision_26/spr_vision_fake_test_task.cpp
-    src/task/spr_vision_26/vendor/debug/param_tuner.cpp
-    src/task/spr_vision_26/vendor/tasks/auto_aim/aimer.cpp
-    src/task/spr_vision_26/vendor/tasks/auto_aim/armor.cpp
-    src/task/spr_vision_26/vendor/tasks/auto_aim/shooter.cpp
-    src/task/spr_vision_26/vendor/tasks/auto_aim/solver.cpp
-    src/task/spr_vision_26/vendor/tasks/auto_aim/target.cpp
-    src/task/spr_vision_26/vendor/tasks/auto_aim/tracker.cpp
-    src/task/spr_vision_26/vendor/tools/extended_kalman_filter.cpp
-    src/task/spr_vision_26/vendor/tools/logger.cpp
-    src/task/spr_vision_26/vendor/tools/math_tools.cpp
-    src/task/spr_vision_26/vendor/tools/trajectory.cpp
+    src/tasks/spr_vision_26/spr_vision_image_bridge.cpp
+    src/tasks/spr_vision_26/spr_vision_fake_test_task.cpp
+    src/tasks/spr_vision_26/vendor/debug/param_tuner.cpp
+    src/tasks/spr_vision_26/vendor/tasks/auto_aim/aimer.cpp
+    src/tasks/spr_vision_26/vendor/tasks/auto_aim/armor.cpp
+    src/tasks/spr_vision_26/vendor/tasks/auto_aim/shooter.cpp
+    src/tasks/spr_vision_26/vendor/tasks/auto_aim/solver.cpp
+    src/tasks/spr_vision_26/vendor/tasks/auto_aim/target.cpp
+    src/tasks/spr_vision_26/vendor/tasks/auto_aim/tracker.cpp
+    src/tasks/spr_vision_26/vendor/tools/extended_kalman_filter.cpp
+    src/tasks/spr_vision_26/vendor/tools/logger.cpp
+    src/tasks/spr_vision_26/vendor/tools/math_tools.cpp
+    src/tasks/spr_vision_26/vendor/tools/trajectory.cpp
   )
 endif()
 
@@ -72,53 +72,53 @@ if(RTR_ENABLE_SPR_VISION_26_REAL)
   find_package(nlohmann_json REQUIRED)
 
   list(APPEND RTR_SOURCES
-    src/task/spr_vision_26/spr_vision_image_bridge.cpp
-    src/task/spr_vision_26/vendor/debug/param_tuner.cpp
-    src/task/spr_vision_26/vendor/io/camera.cpp
-    src/task/spr_vision_26/vendor/io/cboard.cpp
-    src/task/spr_vision_26/vendor/io/dm_imu/dm_imu.cpp
-    src/task/spr_vision_26/vendor/io/gimbal/gimbal.cpp
-    src/task/spr_vision_26/vendor/io/hikrobot/hikrobot.cpp
-    src/task/spr_vision_26/vendor/io/mindvision/mindvision.cpp
-    src/task/spr_vision_26/vendor/io/usbcamera/usbcamera.cpp
-    src/task/spr_vision_26/vendor/io/serial/src/serial.cc
-    src/task/spr_vision_26/vendor/io/serial/src/impl/unix.cc
-    src/task/spr_vision_26/vendor/io/serial/src/impl/list_ports/list_ports_linux.cc
-    src/task/spr_vision_26/vendor/tasks/auto_aim/aimer.cpp
-    src/task/spr_vision_26/vendor/tasks/auto_aim/armor.cpp
-    src/task/spr_vision_26/vendor/tasks/auto_aim/aux_solver.cpp
-    src/task/spr_vision_26/vendor/tasks/auto_aim/classifier.cpp
-    src/task/spr_vision_26/vendor/tasks/auto_aim/detector.cpp
-    src/task/spr_vision_26/vendor/tasks/auto_aim/shooter.cpp
-    src/task/spr_vision_26/vendor/tasks/auto_aim/solver.cpp
-    src/task/spr_vision_26/vendor/tasks/auto_aim/target.cpp
-    src/task/spr_vision_26/vendor/tasks/auto_aim/tracker.cpp
-    src/task/spr_vision_26/vendor/tasks/auto_aim/voter.cpp
-    src/task/spr_vision_26/vendor/tasks/auto_aim/yolo.cpp
-    src/task/spr_vision_26/vendor/tasks/auto_aim/yolos/yolo11.cpp
-    src/task/spr_vision_26/vendor/tasks/auto_aim/yolos/yolov5.cpp
-    src/task/spr_vision_26/vendor/tasks/auto_aim/yolos/yolov8.cpp
-    src/task/spr_vision_26/vendor/tasks/auto_aim/planner/planner.cpp
-    src/task/spr_vision_26/vendor/tasks/auto_aim/planner/tinympc/admm.cpp
-    src/task/spr_vision_26/vendor/tasks/auto_aim/planner/tinympc/codegen.cpp
-    src/task/spr_vision_26/vendor/tasks/auto_aim/planner/tinympc/rho_benchmark.cpp
-    src/task/spr_vision_26/vendor/tasks/auto_aim/planner/tinympc/tiny_api.cpp
-    src/task/spr_vision_26/vendor/tasks/auto_buff/buff_aimer.cpp
-    src/task/spr_vision_26/vendor/tasks/auto_buff/buff_detector.cpp
-    src/task/spr_vision_26/vendor/tasks/auto_buff/buff_solver.cpp
-    src/task/spr_vision_26/vendor/tasks/auto_buff/buff_target.cpp
-    src/task/spr_vision_26/vendor/tasks/auto_buff/buff_type.cpp
-    src/task/spr_vision_26/vendor/tasks/auto_buff/yolo11_buff.cpp
-    src/task/spr_vision_26/vendor/tools/crc.cpp
-    src/task/spr_vision_26/vendor/tools/extended_kalman_filter.cpp
-    src/task/spr_vision_26/vendor/tools/img_tools.cpp
-    src/task/spr_vision_26/vendor/tools/logger.cpp
-    src/task/spr_vision_26/vendor/tools/math_tools.cpp
-    src/task/spr_vision_26/vendor/tools/pid.cpp
-    src/task/spr_vision_26/vendor/tools/plotter.cpp
-    src/task/spr_vision_26/vendor/tools/ransac_sine_fitter.cpp
-    src/task/spr_vision_26/vendor/tools/recorder.cpp
-    src/task/spr_vision_26/vendor/tools/trajectory.cpp
+    src/tasks/spr_vision_26/spr_vision_image_bridge.cpp
+    src/tasks/spr_vision_26/vendor/debug/param_tuner.cpp
+    src/tasks/spr_vision_26/vendor/io/camera.cpp
+    src/tasks/spr_vision_26/vendor/io/cboard.cpp
+    src/tasks/spr_vision_26/vendor/io/dm_imu/dm_imu.cpp
+    src/tasks/spr_vision_26/vendor/io/gimbal/gimbal.cpp
+    src/tasks/spr_vision_26/vendor/io/hikrobot/hikrobot.cpp
+    src/tasks/spr_vision_26/vendor/io/mindvision/mindvision.cpp
+    src/tasks/spr_vision_26/vendor/io/usbcamera/usbcamera.cpp
+    src/tasks/spr_vision_26/vendor/io/serial/src/serial.cc
+    src/tasks/spr_vision_26/vendor/io/serial/src/impl/unix.cc
+    src/tasks/spr_vision_26/vendor/io/serial/src/impl/list_ports/list_ports_linux.cc
+    src/tasks/spr_vision_26/vendor/tasks/auto_aim/aimer.cpp
+    src/tasks/spr_vision_26/vendor/tasks/auto_aim/armor.cpp
+    src/tasks/spr_vision_26/vendor/tasks/auto_aim/aux_solver.cpp
+    src/tasks/spr_vision_26/vendor/tasks/auto_aim/classifier.cpp
+    src/tasks/spr_vision_26/vendor/tasks/auto_aim/detector.cpp
+    src/tasks/spr_vision_26/vendor/tasks/auto_aim/shooter.cpp
+    src/tasks/spr_vision_26/vendor/tasks/auto_aim/solver.cpp
+    src/tasks/spr_vision_26/vendor/tasks/auto_aim/target.cpp
+    src/tasks/spr_vision_26/vendor/tasks/auto_aim/tracker.cpp
+    src/tasks/spr_vision_26/vendor/tasks/auto_aim/voter.cpp
+    src/tasks/spr_vision_26/vendor/tasks/auto_aim/yolo.cpp
+    src/tasks/spr_vision_26/vendor/tasks/auto_aim/yolos/yolo11.cpp
+    src/tasks/spr_vision_26/vendor/tasks/auto_aim/yolos/yolov5.cpp
+    src/tasks/spr_vision_26/vendor/tasks/auto_aim/yolos/yolov8.cpp
+    src/tasks/spr_vision_26/vendor/tasks/auto_aim/planner/planner.cpp
+    src/tasks/spr_vision_26/vendor/tasks/auto_aim/planner/tinympc/admm.cpp
+    src/tasks/spr_vision_26/vendor/tasks/auto_aim/planner/tinympc/codegen.cpp
+    src/tasks/spr_vision_26/vendor/tasks/auto_aim/planner/tinympc/rho_benchmark.cpp
+    src/tasks/spr_vision_26/vendor/tasks/auto_aim/planner/tinympc/tiny_api.cpp
+    src/tasks/spr_vision_26/vendor/tasks/auto_buff/buff_aimer.cpp
+    src/tasks/spr_vision_26/vendor/tasks/auto_buff/buff_detector.cpp
+    src/tasks/spr_vision_26/vendor/tasks/auto_buff/buff_solver.cpp
+    src/tasks/spr_vision_26/vendor/tasks/auto_buff/buff_target.cpp
+    src/tasks/spr_vision_26/vendor/tasks/auto_buff/buff_type.cpp
+    src/tasks/spr_vision_26/vendor/tasks/auto_buff/yolo11_buff.cpp
+    src/tasks/spr_vision_26/vendor/tools/crc.cpp
+    src/tasks/spr_vision_26/vendor/tools/extended_kalman_filter.cpp
+    src/tasks/spr_vision_26/vendor/tools/img_tools.cpp
+    src/tasks/spr_vision_26/vendor/tools/logger.cpp
+    src/tasks/spr_vision_26/vendor/tools/math_tools.cpp
+    src/tasks/spr_vision_26/vendor/tools/pid.cpp
+    src/tasks/spr_vision_26/vendor/tools/plotter.cpp
+    src/tasks/spr_vision_26/vendor/tools/ransac_sine_fitter.cpp
+    src/tasks/spr_vision_26/vendor/tools/recorder.cpp
+    src/tasks/spr_vision_26/vendor/tools/trajectory.cpp
   )
 endif()
 
@@ -135,8 +135,8 @@ set_target_properties(robotaskrun PROPERTIES
 target_include_directories(robotaskrun PRIVATE
   ${CMAKE_CURRENT_SOURCE_DIR}/include
   ${CMAKE_CURRENT_SOURCE_DIR}/src
-  ${CMAKE_CURRENT_SOURCE_DIR}/src/task/spr_vision_26/vendor
-  ${CMAKE_CURRENT_SOURCE_DIR}/src/task/spr_vision_26
+  ${CMAKE_CURRENT_SOURCE_DIR}/src/tasks/spr_vision_26/vendor
+  ${CMAKE_CURRENT_SOURCE_DIR}/src/tasks/spr_vision_26
 )
 
 target_compile_definitions(robotaskrun PRIVATE
@@ -195,19 +195,19 @@ endif()
 if(RTR_ENABLE_SPR_VISION_26_REAL)
   target_link_libraries(robotaskrun PRIVATE openvino::runtime nlohmann_json::nlohmann_json)
   target_include_directories(robotaskrun PRIVATE
-    ${CMAKE_CURRENT_SOURCE_DIR}/src/task/spr_vision_26/vendor/io/serial/include
-    ${CMAKE_CURRENT_SOURCE_DIR}/src/task/spr_vision_26/vendor/io/hikrobot/include
-    ${CMAKE_CURRENT_SOURCE_DIR}/src/task/spr_vision_26/vendor/io/mindvision/include
+    ${CMAKE_CURRENT_SOURCE_DIR}/src/tasks/spr_vision_26/vendor/io/serial/include
+    ${CMAKE_CURRENT_SOURCE_DIR}/src/tasks/spr_vision_26/vendor/io/hikrobot/include
+    ${CMAKE_CURRENT_SOURCE_DIR}/src/tasks/spr_vision_26/vendor/io/mindvision/include
   )
   if(CMAKE_SYSTEM_PROCESSOR MATCHES "x86_64|amd64|AMD64")
     target_link_directories(robotaskrun PRIVATE
-      ${CMAKE_CURRENT_SOURCE_DIR}/src/task/spr_vision_26/vendor/io/hikrobot/lib/amd64
-      ${CMAKE_CURRENT_SOURCE_DIR}/src/task/spr_vision_26/vendor/io/mindvision/lib/amd64
+      ${CMAKE_CURRENT_SOURCE_DIR}/src/tasks/spr_vision_26/vendor/io/hikrobot/lib/amd64
+      ${CMAKE_CURRENT_SOURCE_DIR}/src/tasks/spr_vision_26/vendor/io/mindvision/lib/amd64
     )
   elseif(CMAKE_SYSTEM_PROCESSOR MATCHES "aarch64|arm64")
     target_link_directories(robotaskrun PRIVATE
-      ${CMAKE_CURRENT_SOURCE_DIR}/src/task/spr_vision_26/vendor/io/hikrobot/lib/arm64
-      ${CMAKE_CURRENT_SOURCE_DIR}/src/task/spr_vision_26/vendor/io/mindvision/lib/arm64
+      ${CMAKE_CURRENT_SOURCE_DIR}/src/tasks/spr_vision_26/vendor/io/hikrobot/lib/arm64
+      ${CMAKE_CURRENT_SOURCE_DIR}/src/tasks/spr_vision_26/vendor/io/mindvision/lib/arm64
     )
   else()
     message(FATAL_ERROR "Unsupported SPR Vision hardware architecture: ${CMAKE_SYSTEM_PROCESSOR}")

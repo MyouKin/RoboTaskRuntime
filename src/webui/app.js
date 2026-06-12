@@ -15,6 +15,9 @@ const CHART_COLORS = [
   "#7be0c3",
 ];
 
+const SNAP_DISTANCE_PX = 12;
+const PANEL_GAP_PX = 8;
+
 const PANEL_TYPES = {
   system: { label: "System", minW: 520, minH: 160 },
   chart: { label: "Debug Curves", minW: 460, minH: 330 },
@@ -47,7 +50,7 @@ const state = {
 
 function defaultPanels() {
   return [
-    panel("system", 16, 16, 1160, 150),
+    panel("system", 16, 16, 1160, 160),
     panel("chart", 16, 184, 690, 420, {
       selectedKeys: ["spr.command.yaw_deg", "spr.command.pitch_deg"],
     }),
@@ -83,6 +86,7 @@ function loadPanels() {
   if (!state.panels.length) {
     state.panels = defaultPanels();
   }
+  normalizePanelLayout();
 }
 
 function savePanels() {
@@ -172,19 +176,22 @@ function addPanel(type) {
     Math.max(def.minW, type === "system" || type === "params" ? 760 : def.minW),
     def.minH + (type === "chart" ? 90 : 30),
   );
+  placePanelWithoutOverlap(created);
   state.panels.push(created);
   savePanels();
   renderPanelShells();
 }
 
 function duplicatePanel(source) {
-  state.panels.push({
+  const created = {
     ...source,
     id: `${source.type}-${Date.now()}-${Math.random().toString(16).slice(2)}`,
     x: source.x + 32,
     y: source.y + 32,
     config: { ...source.config },
-  });
+  };
+  placePanelWithoutOverlap(created);
+  state.panels.push(created);
   savePanels();
   renderPanelShells();
 }
@@ -279,6 +286,8 @@ function startDrag(event, id) {
     id,
     dx: event.clientX - rect.left,
     dy: event.clientY - rect.top,
+    startX: item.x,
+    startY: item.y,
   };
   event.preventDefault();
   if (event.currentTarget.setPointerCapture && event.pointerId !== undefined) {
@@ -309,8 +318,14 @@ function applyPointerMove(event) {
   if (state.dragging) {
     const item = state.panels.find((panelItem) => panelItem.id === state.dragging.id);
     if (!item) return;
-    item.x = Math.max(0, event.clientX - dashboardRect.left - state.dragging.dx);
-    item.y = Math.max(0, event.clientY - dashboardRect.top - state.dragging.dy);
+    const desired = constrainDragPosition(
+      item,
+      event.clientX - dashboardRect.left - state.dragging.dx,
+      event.clientY - dashboardRect.top - state.dragging.dy,
+      dashboardRect.width,
+    );
+    item.x = desired.x;
+    item.y = desired.y;
     const element = document.querySelector(`[data-panel-id="${CSS.escape(item.id)}"]`);
     if (element) {
       element.style.left = `${item.x}px`;
@@ -332,6 +347,150 @@ function applyPointerMove(event) {
     updateDashboardHeight();
     updatePanelContent(item);
   }
+}
+
+function panelRect(item, x = item.x, y = item.y, w = item.w, h = item.h) {
+  return { x, y, w, h, right: x + w, bottom: y + h };
+}
+
+function rectsOverlap(a, b) {
+  return a.x < b.right &&
+    a.right > b.x &&
+    a.y < b.bottom &&
+    a.bottom > b.y;
+}
+
+function clampPanelX(item, x, dashboardWidth) {
+  return Math.max(0, Math.min(x, Math.max(0, dashboardWidth - item.w)));
+}
+
+function otherPanels(item) {
+  return state.panels.filter((panelItem) => panelItem.id !== item.id);
+}
+
+function snapDragPosition(item, x, y, dashboardWidth) {
+  let snappedX = clampPanelX(item, x, dashboardWidth);
+  let snappedY = Math.max(0, y);
+  const xTargets = [0, Math.max(0, dashboardWidth - item.w)];
+  const yTargets = [0];
+
+  for (const other of otherPanels(item)) {
+    xTargets.push(
+      other.x,
+      other.x + other.w + PANEL_GAP_PX,
+      other.x - item.w - PANEL_GAP_PX,
+      other.x + other.w - item.w,
+    );
+    yTargets.push(
+      other.y,
+      other.y + other.h + PANEL_GAP_PX,
+      other.y - item.h - PANEL_GAP_PX,
+      other.y + other.h - item.h,
+    );
+  }
+
+  for (const target of xTargets) {
+    const clamped = clampPanelX(item, target, dashboardWidth);
+    if (Math.abs(snappedX - clamped) <= SNAP_DISTANCE_PX) {
+      snappedX = clamped;
+      break;
+    }
+  }
+  for (const target of yTargets) {
+    const clamped = Math.max(0, target);
+    if (Math.abs(snappedY - clamped) <= SNAP_DISTANCE_PX) {
+      snappedY = clamped;
+      break;
+    }
+  }
+  return { x: snappedX, y: snappedY };
+}
+
+function constrainDragPosition(item, desiredX, desiredY, dashboardWidth) {
+  const snapped = snapDragPosition(item, desiredX, desiredY, dashboardWidth);
+  let x = snapped.x;
+  let y = snapped.y;
+  const start = panelRect(item, state.dragging?.startX ?? item.x, state.dragging?.startY ?? item.y);
+
+  for (let pass = 0; pass < 8; pass += 1) {
+    const current = panelRect(item, x, y);
+    const blocker = otherPanels(item).find((other) => rectsOverlap(current, panelRect(other)));
+    if (!blocker) break;
+
+    const other = panelRect(blocker);
+    const candidateShifts = [];
+    if (start.right <= other.x || desiredX >= item.x) {
+      candidateShifts.push({ x: other.x - item.w - PANEL_GAP_PX, y, cost: Math.abs(x - (other.x - item.w - PANEL_GAP_PX)) });
+    }
+    if (start.x >= other.right || desiredX <= item.x) {
+      candidateShifts.push({ x: other.right + PANEL_GAP_PX, y, cost: Math.abs(x - (other.right + PANEL_GAP_PX)) });
+    }
+    if (start.bottom <= other.y || desiredY >= item.y) {
+      candidateShifts.push({ x, y: other.y - item.h - PANEL_GAP_PX, cost: Math.abs(y - (other.y - item.h - PANEL_GAP_PX)) });
+    }
+    if (start.y >= other.bottom || desiredY <= item.y) {
+      candidateShifts.push({ x, y: other.bottom + PANEL_GAP_PX, cost: Math.abs(y - (other.bottom + PANEL_GAP_PX)) });
+    }
+    candidateShifts.push(
+      { x: other.x - item.w - PANEL_GAP_PX, y, cost: Math.abs(x - (other.x - item.w - PANEL_GAP_PX)) },
+      { x: other.right + PANEL_GAP_PX, y, cost: Math.abs(x - (other.right + PANEL_GAP_PX)) },
+      { x, y: other.y - item.h - PANEL_GAP_PX, cost: Math.abs(y - (other.y - item.h - PANEL_GAP_PX)) },
+      { x, y: other.bottom + PANEL_GAP_PX, cost: Math.abs(y - (other.bottom + PANEL_GAP_PX)) },
+    );
+
+    const valid = candidateShifts
+      .map((candidate) => ({
+        x: clampPanelX(item, candidate.x, dashboardWidth),
+        y: Math.max(0, candidate.y),
+        cost: candidate.cost,
+      }))
+      .filter((candidate) => !otherPanels(item).some((otherPanel) =>
+        rectsOverlap(panelRect(item, candidate.x, candidate.y), panelRect(otherPanel)),
+      ))
+      .sort((a, b) => a.cost - b.cost);
+
+    if (valid.length) {
+      x = valid[0].x;
+      y = valid[0].y;
+      break;
+    }
+    x = item.x;
+    y = item.y;
+    break;
+  }
+
+  return { x: clampPanelX(item, x, dashboardWidth), y: Math.max(0, y) };
+}
+
+function placePanelWithoutOverlap(item) {
+  const dashboardWidth = $("dashboard")?.getBoundingClientRect().width || window.innerWidth || 1200;
+  for (let attempt = 0; attempt < 80; attempt += 1) {
+    const rect = panelRect(item);
+    if (!state.panels.some((other) => rectsOverlap(rect, panelRect(other)))) {
+      return;
+    }
+    item.x = clampPanelX(item, item.x + 34, dashboardWidth);
+    item.y += 34;
+    if (item.x + item.w >= dashboardWidth) {
+      item.x = 16;
+      item.y += 34;
+    }
+  }
+}
+
+function normalizePanelLayout() {
+  const original = [...state.panels];
+  state.panels = [];
+  const dashboardWidth = $("dashboard")?.getBoundingClientRect().width || window.innerWidth || 1200;
+  for (const item of original) {
+    item.x = clampPanelX(item, item.x, dashboardWidth);
+    item.y = Math.max(0, item.y);
+    item.w = Math.max(PANEL_TYPES[item.type].minW, item.w);
+    item.h = Math.max(PANEL_TYPES[item.type].minH, item.h);
+    placePanelWithoutOverlap(item);
+    state.panels.push(item);
+  }
+  savePanels();
 }
 
 function finishPointerChange() {
@@ -510,10 +669,36 @@ function renderLogsConfig(item, box) {
 }
 
 function renderChartPanel(item, content) {
-  content.innerHTML = "";
   const series = seriesForPanel(item.config);
-  const legend = document.createElement("div");
-  legend.className = "chart-legend";
+  let legend = content.querySelector(".chart-legend");
+  let wrap = content.querySelector(".chart-wrap");
+  let canvas = content.querySelector("canvas");
+  let tooltip = content.querySelector(".chart-tooltip");
+
+  if (!legend || !wrap || !canvas || !tooltip) {
+    content.innerHTML = "";
+    legend = document.createElement("div");
+    legend.className = "chart-legend";
+    wrap = document.createElement("div");
+    wrap.className = "chart-wrap";
+    canvas = document.createElement("canvas");
+    tooltip = document.createElement("div");
+    tooltip.className = "chart-tooltip";
+    wrap.append(canvas, tooltip);
+    content.append(legend, wrap);
+
+    canvas.addEventListener("mousemove", (event) => {
+      const rect = canvas.getBoundingClientRect();
+      content._hoverX = event.clientX - rect.left;
+      if (content._drawChart) content._drawChart(content._hoverX);
+    });
+    canvas.addEventListener("mouseleave", () => {
+      content._hoverX = null;
+      if (content._drawChart) content._drawChart(null);
+    });
+  }
+
+  legend.innerHTML = "";
   for (const line of series) {
     const values = line.points.map((point) => point[1]);
     const min = Math.min(...values);
@@ -530,14 +715,6 @@ function renderChartPanel(item, content) {
     legend.appendChild(pill);
   }
 
-  const wrap = document.createElement("div");
-  wrap.className = "chart-wrap";
-  const canvas = document.createElement("canvas");
-  const tooltip = document.createElement("div");
-  tooltip.className = "chart-tooltip";
-  wrap.append(canvas, tooltip);
-  content.append(legend, wrap);
-
   const draw = (hoverX = null) => {
     const hover = drawChart(canvas, series, hoverX);
     if (!hover) {
@@ -545,19 +722,16 @@ function renderChartPanel(item, content) {
       return;
     }
     tooltip.classList.add("visible");
-    tooltip.style.left = `${Math.min(hover.x + 12, canvas.clientWidth - 190)}px`;
-    tooltip.style.top = `${Math.max(8, hover.y - 12)}px`;
+    const tooltipLeft = Math.max(8, Math.min(hover.x + 12, canvas.clientWidth - 190));
+    const tooltipTop = Math.max(8, Math.min(hover.y - 12, canvas.clientHeight - 92));
+    tooltip.style.left = `${tooltipLeft}px`;
+    tooltip.style.top = `${tooltipTop}px`;
     tooltip.innerHTML = hover.rows
       .map((row) => `<div><b style="color:${row.color}">${row.key}</b> ${formatValue(row.value)}</div>`)
       .join("");
   };
-
-  canvas.addEventListener("mousemove", (event) => {
-    const rect = canvas.getBoundingClientRect();
-    draw(event.clientX - rect.left);
-  });
-  canvas.addEventListener("mouseleave", () => draw(null));
-  draw(null);
+  content._drawChart = draw;
+  draw(content._hoverX ?? null);
 }
 
 function setupCanvas(canvas) {
@@ -712,7 +886,6 @@ function drawChart(canvas, series, hoverX) {
 }
 
 function renderImagePanel(item, content) {
-  content.innerHTML = "";
   const key = state.debug.images.includes(item.config.imageKey)
     ? item.config.imageKey
     : state.debug.images[0];
@@ -720,12 +893,37 @@ function renderImagePanel(item, content) {
     item.config.imageKey = key;
     savePanels();
   }
-  const img = document.createElement("img");
-  img.alt = key || "No debug image";
-  if (key) {
-    img.src = `/api/debug/image/${encodeURIComponent(key)}?t=${Date.now()}`;
+  let img = content.querySelector("img");
+  if (!img) {
+    content.innerHTML = "";
+    img = document.createElement("img");
+    img.className = "debug-image";
+    content.appendChild(img);
   }
-  content.appendChild(img);
+  img.alt = key || "No debug image";
+  if (!key) {
+    img.removeAttribute("src");
+    img.dataset.key = "";
+    img.dataset.loading = "";
+    return;
+  }
+  if (img.dataset.loading === "true") {
+    return;
+  }
+
+  const nextSrc = `/api/debug/image/${encodeURIComponent(key)}?t=${Date.now()}`;
+  const preloader = new Image();
+  img.dataset.loading = "true";
+  preloader.onload = () => {
+    img.src = nextSrc;
+    img.dataset.key = key;
+    img.dataset.loading = "";
+    img.classList.add("ready");
+  };
+  preloader.onerror = () => {
+    img.dataset.loading = "";
+  };
+  preloader.src = nextSrc;
 }
 
 function renderParamsPanel(item, content) {

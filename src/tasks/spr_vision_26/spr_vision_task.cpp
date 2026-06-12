@@ -114,7 +114,7 @@ bool SprVisionTask::onInit(rtr::Rtr& rtr) {
 #ifdef RTR_SPR_VISION_26_DIR
       std::string(RTR_SPR_VISION_26_DIR) + "/vendor/configs/spr_standard4.yaml";
 #else
-      "src/task/spr_vision_26/vendor/configs/spr_standard4.yaml";
+      "src/tasks/spr_vision_26/vendor/configs/spr_standard4.yaml";
 #endif
 
   rtr.param().declareString("spr.config_path", default_config,

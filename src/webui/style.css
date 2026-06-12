@@ -59,6 +59,7 @@ h1 {
 }
 
 h2 {
+  min-width: 0;
   overflow: hidden;
   color: var(--muted);
   text-overflow: ellipsis;
@@ -104,7 +105,7 @@ h2 {
 
 button,
 select,
-input {
+input:not([type="checkbox"]) {
   min-height: 32px;
   border: 1px solid var(--line);
   border-radius: 7px;
@@ -121,12 +122,12 @@ button {
 
 button:hover,
 select:hover,
-input:focus {
+input:not([type="checkbox"]):focus {
   border-color: var(--accent-2);
 }
 
 button:disabled,
-input:disabled,
+input:not([type="checkbox"]):disabled,
 select:disabled {
   cursor: not-allowed;
   opacity: 0.55;
@@ -140,7 +141,7 @@ button.danger,
 }
 
 select,
-input {
+input:not([type="checkbox"]) {
   padding: 0 9px;
 }
 
@@ -158,8 +159,8 @@ input {
   position: absolute;
   display: grid;
   grid-template-rows: auto auto minmax(0, 1fr);
-  min-width: 320px;
-  min-height: 180px;
+  min-width: 0;
+  min-height: 0;
   overflow: hidden;
   border: 1px solid var(--line);
   border-radius: 8px;
@@ -185,6 +186,7 @@ input {
 
 .panel-actions {
   flex-wrap: nowrap;
+  flex-shrink: 0;
 }
 
 .small-button {
@@ -211,6 +213,12 @@ input {
   min-height: 0;
   overflow: auto;
   padding: 12px;
+}
+
+.chart-panel .panel-content {
+  display: grid;
+  grid-template-rows: auto minmax(0, 1fr);
+  overflow: hidden;
 }
 
 .panel-resizer {
@@ -265,7 +273,11 @@ input {
   display: flex;
   flex-wrap: wrap;
   gap: 6px;
+  align-content: flex-start;
+  min-height: 29px;
+  max-height: 58px;
   margin-bottom: 8px;
+  overflow: hidden;
 }
 
 .legend-item {
@@ -302,15 +314,16 @@ input {
 
 .chart-wrap {
   position: relative;
-  height: calc(100% - 38px);
-  min-height: 230px;
+  min-height: 0;
+  overflow: hidden;
+  contain: layout paint;
 }
 
 canvas {
   display: block;
   width: 100%;
   height: 100%;
-  min-height: 230px;
+  min-height: 0;
   border: 1px solid var(--line);
   border-radius: 7px;
   background: #0b0d11;
@@ -319,7 +332,9 @@ canvas {
 .chart-tooltip {
   position: absolute;
   z-index: 3;
-  display: none;
+  display: grid;
+  visibility: hidden;
+  opacity: 0;
   min-width: 170px;
   max-width: 240px;
   padding: 8px;
@@ -330,10 +345,12 @@ canvas {
   pointer-events: none;
   font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
   font-size: 11px;
+  transition: opacity 80ms linear;
 }
 
 .chart-tooltip.visible {
-  display: grid;
+  visibility: visible;
+  opacity: 1;
   gap: 4px;
 }
 
@@ -383,9 +400,9 @@ td.key {
   font-size: 12px;
 }
 
-td input,
+td input:not([type="checkbox"]),
 td select,
-.panel-config input,
+.panel-config input:not([type="checkbox"]),
 .panel-config select {
   width: 100%;
   min-width: 110px;
@@ -404,15 +421,25 @@ td select,
 
 .check-list label {
   display: grid;
-  grid-template-columns: 18px minmax(0, 1fr);
+  grid-template-columns: 16px minmax(0, 1fr);
   align-items: center;
-  gap: 6px;
+  gap: 8px;
+  min-width: 0;
+  min-height: 30px;
   padding: 6px 7px;
   border: 1px solid var(--line);
   border-radius: 6px;
   background: #12161c;
   font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
   font-size: 12px;
+}
+
+.check-list input[type="checkbox"] {
+  width: 16px;
+  height: 16px;
+  min-width: 16px;
+  margin: 0;
+  accent-color: var(--accent);
 }
 
 .check-list span {
